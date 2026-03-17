@@ -14,7 +14,7 @@
 void load_file(const char* filename, void* buffer, size_t size) {
     FILE* f = fopen(filename, "rb");
     if (!f) {
-        printf("Error: Could not open %s.\n", filename);
+        printf("Error: Could not open %s. \n", filename);
         exit(1);
     }
     fread(buffer, 1, size, f);
