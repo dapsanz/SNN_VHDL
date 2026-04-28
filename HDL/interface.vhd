@@ -18,7 +18,6 @@
 -- 
 ----------------------------------------------------------------------------------
 
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
@@ -32,110 +31,177 @@ use IEEE.NUMERIC_STD.ALL;
 --use UNISIM.VComponents.all;
 
 entity interface is
-  Port ( clk: in std_logic;
-         rst: in std_logic;
-         output_digit: out std_logic_vector(3 downto 0)
+  Port ( 
+         clk             : in std_logic;
+         rst             : in std_logic;
+         
+         -- External Control Inputs
+         start_inference : in std_logic;
+         start_init_w    : in std_logic;
+         pixel_valid     : in std_logic;
+         
+         -- External Data Inputs
+         h_weight_in     : in std_logic_vector(7 downto 0);
+         o_weight_in     : in std_logic_vector(7 downto 0);
+         image_in        : in std_logic_vector(7 downto 0);
+         
+         inference_done  : out std_logic;
+         
+         -- Outputs
+         output          : out std_logic_vector(19 downto 0)
    );
 end interface;
 
 architecture Behavioral of interface is
 
-attribute dont_touch : string;
-attribute dont_touch of u_controller : label is "true";
-attribute dont_touch of u_datapath   : label is "true";
+    attribute dont_touch : string;
+    attribute dont_touch of u_controller : label is "true";
+    attribute dont_touch of u_datapath   : label is "true";
 
-signal leak   : std_logic;           
-signal spikegen_go : std_logic;
-signal fifo_rd : std_logic;  
---- RAM WE ---
-signal hidden_weights_we :std_logic;
-signal hidden_neurons_we : std_logic;
-signal image_we : std_logic;       
-signal en_cd0   : std_logic;
-signal en_cd1   : std_logic; 
-signal en_cd2   : std_logic;        
-signal en_cd3   : std_logic;        
-signal en_cd4   : std_logic;        
-signal en_cd5   : std_logic;        
-signal en_cd6   : std_logic;        
-signal en_cd7   : std_logic;        
-signal en_cd8    : std_logic;        
-signal en_cd9   : std_logic;
------- Output Flags ------ 
-signal fifo_full:  std_logic;
-signal fifo_empty:  std_logic;
-signal neuron_spike   :  std_logic;  
+    -- Control Signals
+    signal leak    : std_logic;
+    signal init_w  : std_logic;
+    signal init_n  : std_logic;
+    signal stg     : std_logic;
+    signal fifo_rd : std_logic;
+    signal out_en  : std_logic;
 
-signal init_weight : std_logic_vector(7 downto 0):= (others => '0');
-signal init_image : std_logic_vector(7 downto 0):= (others => '0');
---signal output_digit: std_logic_vector(3 downto 0);     
+    -- RAM WE
+    signal hw_we   : std_logic;
+    signal hn_we   : std_logic;
+    signal ow_we   : std_logic;
+    signal on_we   : std_logic;
+    signal img_we  : std_logic;
+
+    -- Counter Enables
+    signal pid_en  : std_logic;
+    signal hw_en   : std_logic;
+    signal ow_en   : std_logic;
+    signal hn_en   : std_logic;
+    signal on_en   : std_logic;
+    signal step_en : std_logic;
+
+    -- Counter Resets
+    signal rst_pid : std_logic;
+    signal rst_hw  : std_logic;
+    signal rst_ow  : std_logic;
+    signal rst_hn  : std_logic;
+    signal rst_on  : std_logic;
+
+    -- Output Flags / Datapath Feedback
+    signal fifo_full  : std_logic;
+    signal fifo_empty : std_logic;
+    signal spike      : std_logic;
+    signal eq_pid     : std_logic;
+    signal eq_hw      : std_logic;
+    signal eq_ow      : std_logic;
+    signal eq_hn      : std_logic;
+    signal eq_on      : std_logic;
+    signal last_step  : std_logic;
+    
+    -- Controller Status Flags
+--    signal inference_done  : std_logic;
+    signal init_w_done     : std_logic;
+    
+    signal output_signal   : std_logic_vector(39 downto 0); 
 
 begin
 
+    output <= output_signal(19 downto 0);
+    u_controller: entity work.controller
+    port map(
+        clk             => clk,
+        rst             => rst,
+        
+        start_inference => start_inference,
+        start_init_w    => start_init_w,
+        pixel_valid     => pixel_valid,
+        
+        fifo_full       => fifo_full,
+        fifo_empty      => fifo_empty,
+        spike           => spike,
+        eq_pid          => eq_pid,
+        eq_hw           => eq_hw,
+        eq_ow           => eq_ow,
+        eq_hn           => eq_hn,
+        eq_on           => eq_on,
+        last_step       => last_step,
+        
+        inference_done  => inference_done,
+        init_w_done     => init_w_done,
+        
+        rst_pid         => rst_pid,
+        rst_hn          => rst_hn,
+        rst_on          => rst_on,
+        rst_hw          => rst_hw,
+        rst_ow          => rst_ow,
+        
+        leak            => leak,
+        init_n          => init_n,
+        init_w          => init_w,
+        stg             => stg,
+        fifo_rd         => fifo_rd,
+        out_en          => out_en,
+        
+        hw_we           => hw_we,
+        ow_we           => ow_we,
+        hn_we           => hn_we,
+        on_we           => on_we,
+        img_we          => img_we,
+        
+        pid_en          => pid_en,
+        hw_en           => hw_en,
+        ow_en           => ow_en,
+        hn_en           => hn_en,
+        on_en           => on_en,
+        step_en         => step_en
+    );
 
-u_controller: entity work.controller
-port map(
-    clk               => clk,
-    rst               => rst,
-    leak              => leak,
-    spikegen_go       => spikegen_go,
-    fifo_rd           => fifo_rd,
-    hidden_weights_we => hidden_weights_we,
-    hidden_neurons_we => hidden_neurons_we,
-    image_we          => image_we,
-    en_cd0            => en_cd0,
-    en_cd1            => en_cd1,
-    en_cd2            => en_cd2,
-    en_cd3            => en_cd3,
-    en_cd4            => en_cd4,
-    en_cd5            => en_cd5,
-    en_cd6            => en_cd6,
-    en_cd7            => en_cd7,
-    en_cd8            => en_cd8,
-    en_cd9            => en_cd9,
-
-    fifo_full         => fifo_full,
-    fifo_empty        => fifo_empty,
-    neuron_spike      => neuron_spike
-);
-
-u_datapath: entity work.datapath
-port map(
-    clk               => clk,
-    rst               => rst,
-    
-    init_weight       => init_weight,
-    init_image        => init_image,
-    output_digit      => output_digit,
-    
-    leak              => leak,
-    spikegen_go       => spikegen_go,
-    fifo_rd           => fifo_rd,
-    hidden_weights_we => hidden_weights_we,
-    hidden_neurons_we => hidden_neurons_we,
-    image_we          => image_we,
-    en_cd0            => en_cd0,
-    en_cd1            => en_cd1,
-    en_cd2            => en_cd2,
-    en_cd3            => en_cd3,
-    en_cd4            => en_cd4,
-    en_cd5            => en_cd5,
-    en_cd6            => en_cd6,
-    en_cd7            => en_cd7,
-    en_cd8            => en_cd8,
-    en_cd9            => en_cd9,
-
-    fifo_full         => fifo_full,
-    fifo_empty        => fifo_empty,
-    neuron_spike      => neuron_spike
-);
-
-stim: process(clk)
-begin
-    if(rising_edge(clk)) then
-        init_weight <= std_logic_vector(unsigned(init_weight)+1);
-        init_image  <= std_logic_vector(unsigned(init_image)+1);
-    end if; 
-end process;
+    u_datapath: entity work.datapath
+    port map(
+        clk             => clk,
+        rst             => rst,
+        
+        o_weight_in     => o_weight_in,
+        h_weight_in     => h_weight_in,
+        image_in        => image_in,
+        output          => output_signal,
+        
+        leak            => leak,
+        init_w          => init_w,
+        init_n          => init_n,
+        stg             => stg,
+        fifo_rd         => fifo_rd,
+        
+        hw_we           => hw_we,
+        hn_we           => hn_we,
+        ow_we           => ow_we,
+        on_we           => on_we,
+        img_we          => img_we,
+        
+        pid_en          => pid_en,
+        hw_en           => hw_en,
+        ow_en           => ow_en,
+        hn_en           => hn_en,
+        on_en           => on_en,
+        step_en         => step_en,
+        
+        rst_pid         => rst_pid,
+        rst_hw          => rst_hw,
+        rst_ow          => rst_ow,
+        rst_hn          => rst_hn,
+        rst_on          => rst_on,
+        out_en          => out_en,
+        
+        fifo_full       => fifo_full,
+        fifo_empty      => fifo_empty,
+        spike           => spike,
+        eq_on           => eq_on,
+        eq_hn           => eq_hn,
+        eq_hw           => eq_hw,
+        eq_ow           => eq_ow,
+        eq_pid          => eq_pid,
+        last_step       => last_step
+    );
 
 end Behavioral;
